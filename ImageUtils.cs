@@ -20,15 +20,13 @@ namespace GomokuCV
 
         public static void SaveCombinedImage(Mat original, Mat transformedBoard, Mat edges, Mat markedBoard)
         {
-            // Convert edges to 3 channels if it's a single-channel image
             if (edges.NumberOfChannels == 1)
             {
                 Mat edgesColor = new Mat();
                 CvInvoke.CvtColor(edges, edgesColor, ColorConversion.Gray2Bgr);
-                edges = edgesColor; // Use the converted edges for further processing
+                edges = edgesColor;
             }
 
-            // Create a combined image
             Mat combined = new Mat(new Size(original.Width * 2, original.Height * 2), DepthType.Cv8U, 3);
             original.CopyTo(new Mat(combined, new Rectangle(0, 0, original.Width, original.Height)));
             transformedBoard.CopyTo(new Mat(combined, new Rectangle(original.Width, 0, transformedBoard.Width, transformedBoard.Height)));
@@ -45,6 +43,29 @@ namespace GomokuCV
         {
             CvInvoke.Imshow(windowName, image);
             CvInvoke.WaitKey(1);
+        }
+
+        public static Mat DrawStonesOnBoard(Mat markedBoard, List<System.Drawing.Rectangle> detectedStones)
+        {
+            foreach (var stone in detectedStones)
+            {
+                CvInvoke.Ellipse(markedBoard,
+                    new System.Drawing.Point(stone.X + stone.Width / 2, stone.Y + stone.Height / 2),
+                    new System.Drawing.Size(stone.Width / 2, stone.Height / 2),
+                    0, 0, 360, new MCvScalar(0, 0, 255), 2);
+            }
+
+            return markedBoard;
+        }
+
+        public static Mat DrawIntersections(Mat markedBoard, List<System.Drawing.Point> intersections)
+        {
+            foreach (var intersection in intersections)
+            {
+                CvInvoke.DrawMarker(markedBoard, intersection, new MCvScalar(0, 255, 0), MarkerTypes.Cross, 10, 2);
+            }
+
+            return markedBoard;
         }
     }
 }
