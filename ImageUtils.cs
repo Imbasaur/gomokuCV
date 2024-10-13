@@ -8,34 +8,35 @@ namespace GomokuCV
 {
     public static class ImageUtils
     {
-        public static void SaveDetectedStones(Mat originalFrame, List<Rectangle> detectedStones)
-        {
-            foreach (var stone in detectedStones)
-            {
-                var center = new System.Drawing.Point(stone.X + stone.Width / 2, stone.Y + stone.Height / 2);
-                var axes = new Size(stone.Width / 2, stone.Height / 2);
-                CvInvoke.Ellipse(originalFrame, center, axes, 0, 0, 360, new MCvScalar(0, 0, 255), 2);
-            }
+        private static string outputDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "output");
 
-            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            string stonesImagePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"detected_stones_{timestamp}.png");
-            CvInvoke.Imwrite(stonesImagePath, originalFrame);
+        static ImageUtils()
+        {
+            if (!Directory.Exists(outputDirectory))
+            {
+                Directory.CreateDirectory(outputDirectory);
+            }
         }
 
-        public static void SaveFourImages(Mat original, Mat marked, Mat edges)
+        public static void SaveCombinedImage(Mat original, Mat transformedBoard, Mat edges, Mat markedBoard)
         {
-            Mat empty = new Mat(original.Size, DepthType.Cv8U, 3);
-            empty.SetTo(new MCvScalar(0, 0, 0));
-            Mat edges3Channel = new Mat();
-            CvInvoke.CvtColor(edges, edges3Channel, ColorConversion.Gray2Bgr);
+            // Convert edges to 3 channels if it's a single-channel image
+            if (edges.NumberOfChannels == 1)
+            {
+                Mat edgesColor = new Mat();
+                CvInvoke.CvtColor(edges, edgesColor, ColorConversion.Gray2Bgr);
+                edges = edgesColor; // Use the converted edges for further processing
+            }
+
+            // Create a combined image
             Mat combined = new Mat(new Size(original.Width * 2, original.Height * 2), DepthType.Cv8U, 3);
             original.CopyTo(new Mat(combined, new Rectangle(0, 0, original.Width, original.Height)));
-            marked.CopyTo(new Mat(combined, new Rectangle(original.Width, 0, marked.Width, marked.Height)));
-            edges3Channel.CopyTo(new Mat(combined, new Rectangle(0, original.Height, edges3Channel.Width, edges3Channel.Height)));
-            empty.CopyTo(new Mat(combined, new Rectangle(original.Width, original.Height, empty.Width, empty.Height)));
+            transformedBoard.CopyTo(new Mat(combined, new Rectangle(original.Width, 0, transformedBoard.Width, transformedBoard.Height)));
+            edges.CopyTo(new Mat(combined, new Rectangle(0, original.Height, edges.Width, edges.Height)));
+            markedBoard.CopyTo(new Mat(combined, new Rectangle(original.Width, original.Height, markedBoard.Width, markedBoard.Height)));
 
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            string combinedImagePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"combined_{timestamp}.png");
+            string combinedImagePath = Path.Combine(outputDirectory, $"combined_{timestamp}.png");
             CvInvoke.Imwrite(combinedImagePath, combined);
             DisplayIntermediateImage(combined, "Combined Image");
         }

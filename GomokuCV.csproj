@@ -10,10 +10,29 @@
 
   <ItemGroup>
     <None Remove="view.png" />
+    <None Remove="view2.png" />
+    <None Remove="view3.png" />
+    <None Remove="view4.png" />
+    <None Remove="view5.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="view2.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="view.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="view3.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="view4.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="view5.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

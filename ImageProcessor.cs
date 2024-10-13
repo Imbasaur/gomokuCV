@@ -4,7 +4,6 @@ using Emgu.CV.Structure;
 using Emgu.CV.Util;
 using System.Collections.Generic;
 using System.Drawing;
-using System.IO;
 using System.Linq;
 
 namespace GomokuCV
@@ -26,6 +25,7 @@ namespace GomokuCV
             var contours = new VectorOfVectorOfPoint();
             Mat hierarchy = new Mat();
             CvInvoke.FindContours(edges, contours, hierarchy, RetrType.List, ChainApproxMethod.ChainApproxSimple);
+            ImageUtils.DisplayIntermediateImage(edges, "edges");
 
             VectorOfPoint largestContour = FindLargestContour(contours);
             if (largestContour != null)
@@ -36,13 +36,19 @@ namespace GomokuCV
                 if (boardCorners.Count == 4)
                 {
                     Mat warpedFrame = PerformPerspectiveTransform(originalFrame, boardCorners);
-                    ImageUtils.DisplayIntermediateImage(warpedFrame, "warped");
+                    ImageUtils.DisplayIntermediateImage(warpedFrame, "Warped Board");
+
+                    Mat warpedEdges = new Mat();
+                    CvInvoke.Canny(warpedFrame, warpedEdges, 15, 150);
+                    ImageUtils.DisplayIntermediateImage(warpedEdges, "Warped edges");
+
                     DetectStones(warpedFrame, ref detectedStones, ref moveCounter);
+                    Mat markedBoard = DrawStonesOnBoard(warpedFrame, detectedStones);
+
+                    // Save the combined image
+                    ImageUtils.SaveCombinedImage(originalFrame, warpedFrame, warpedEdges, markedBoard);
                 }
             }
-
-            ImageUtils.SaveDetectedStones(originalFrame, detectedStones);
-            ImageUtils.SaveFourImages(originalFrame, markedFrame, edges);
         }
 
         private static VectorOfPoint FindLargestContour(VectorOfVectorOfPoint contours)
@@ -151,6 +157,20 @@ namespace GomokuCV
                     moveCounter++;
                 }
             }
+        }
+
+        private static Mat DrawStonesOnBoard(Mat warpedFrame, List<Rectangle> detectedStones)
+        {
+            Mat markedBoard = warpedFrame.Clone();
+
+            foreach (var stone in detectedStones)
+            {
+                var center = new System.Drawing.Point(stone.X + stone.Width / 2, stone.Y + stone.Height / 2);
+                var axes = new Size(stone.Width / 2, stone.Height / 2);
+                CvInvoke.Ellipse(markedBoard, center, axes, 0, 0, 360, new MCvScalar(0, 0, 255), 2);
+            }
+
+            return markedBoard;
         }
     }
 }
