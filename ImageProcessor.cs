@@ -2,174 +2,154 @@
 using Emgu.CV.CvEnum;
 using Emgu.CV.Structure;
 using Emgu.CV.Util;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 
 namespace GomokuCV
 {
     public class ImageProcessor
     {
-        public static void ProcessFrame(Mat originalFrame, ref List<Rectangle> detectedStones, ref int moveCounter, Mat original)
+        public static void ProcessFrame(Mat originalFrame, ref List<Rectangle> detectedStones, ref int moveCounter)
         {
-            try
+            Mat markedFrame = originalFrame.Clone();
+            Mat gray = new Mat();
+            CvInvoke.CvtColor(originalFrame, gray, ColorConversion.Bgr2Gray);
+            CvInvoke.GaussianBlur(gray, gray, new Size(5, 5), 1);
+
+            Mat edges = new Mat();
+            CvInvoke.Canny(gray, edges, 15, 150);
+            Mat kernel = CvInvoke.GetStructuringElement(ElementShape.Rectangle, new Size(5, 5), new Point(-1, -1));
+            CvInvoke.MorphologyEx(edges, edges, MorphOp.Close, kernel, new Point(-1, -1), 1, BorderType.Default, new MCvScalar(0));
+
+            var contours = new VectorOfVectorOfPoint();
+            Mat hierarchy = new Mat();
+            CvInvoke.FindContours(edges, contours, hierarchy, RetrType.List, ChainApproxMethod.ChainApproxSimple);
+
+            VectorOfPoint largestContour = FindLargestContour(contours);
+            if (largestContour != null)
             {
-                Mat markedFrame = originalFrame.Clone();
+                CvInvoke.Polylines(originalFrame, largestContour, true, new MCvScalar(255, 0, 0), 2, LineType.AntiAlias, 0);
+                var boardCorners = GetBoardCorners(largestContour);
 
-                Mat gray = new Mat();
-                CvInvoke.CvtColor(originalFrame, gray, ColorConversion.Bgr2Gray);
-
-                CvInvoke.GaussianBlur(gray, gray, new Size(5, 5), 1);
-
-                Mat edges = new Mat();
-                CvInvoke.Canny(gray, edges, 15, 150);
-
-                Mat kernel = CvInvoke.GetStructuringElement(ElementShape.Rectangle, new Size(5, 5), new Point(-1, -1));
-                CvInvoke.MorphologyEx(edges, edges, MorphOp.Close, kernel, new Point(-1, -1), 1, BorderType.Default, new MCvScalar(0));
-
-                DisplayIntermediateImage(edges, "Edges");
-
-                var contours = new VectorOfVectorOfPoint();
-                Mat hierarchy = new Mat();
-                CvInvoke.FindContours(edges, contours, hierarchy, RetrType.List, ChainApproxMethod.ChainApproxSimple);
-
-                for (int i = 0; i < contours.Size; i++)
+                if (boardCorners.Count == 4)
                 {
-                    var contour = contours[i];
-                    if (contour.Size >= 5)
-                    {
-                        var ellipse = CvInvoke.FitEllipse(contour);
-                        Rectangle stoneRect = new Rectangle(
-                            (int)(ellipse.Center.X - ellipse.Size.Width / 2),
-                            (int)(ellipse.Center.Y - ellipse.Size.Height / 2),
-                            (int)(ellipse.Size.Width),
-                            (int)(ellipse.Size.Height));
-
-                        if (detectedStones.TrueForAll(rect => !rect.IntersectsWith(stoneRect) && IsStoneOnBoard(stoneRect, originalFrame.Width, originalFrame.Height)))
-                        {
-                            detectedStones.Add(stoneRect);
-                            CvInvoke.Ellipse(markedFrame, ellipse, new MCvScalar(0, 255, 0), 2);
-                            moveCounter++;
-                            LogMove(moveCounter, "Detected", (int)ellipse.Center.X, (int)ellipse.Center.Y);
-                        }
-                    }
-                }
-
-                SaveDetectedStones(markedFrame, detectedStones);
-                SaveFourImages(originalFrame, markedFrame, edges);
-            }
-            catch (Exception ex)
-            {
-                LogError("Error in ProcessFrame: " + ex.Message);
-            }
-        }
-
-        private static void SaveDetectedStones(Mat originalFrame, List<Rectangle> detectedStones)
-        {
-            try
-            {
-                foreach (var stone in detectedStones)
-                {
-                    var center = new System.Drawing.Point(stone.X + stone.Width / 2, stone.Y + stone.Height / 2);
-                    var axes = new Size(stone.Width / 2, stone.Height / 2);
-                    CvInvoke.Ellipse(originalFrame, center, axes, 0, 0, 360, new MCvScalar(0, 0, 255), 2);
-                }
-
-                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string stonesImagePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"detected_stones_{timestamp}.png");
-                CvInvoke.Imwrite(stonesImagePath, originalFrame);
-            }
-            catch (Exception ex)
-            {
-                LogError("Error in SaveDetectedStones: " + ex.Message);
-            }
-        }
-
-        private static void SaveFourImages(Mat original, Mat marked, Mat edges)
-        {
-            try
-            {
-                Mat empty = new Mat(original.Size, DepthType.Cv8U, 3);
-                empty.SetTo(new MCvScalar(0, 0, 0));
-                Mat edges3Channel = new Mat();
-                CvInvoke.CvtColor(edges, edges3Channel, ColorConversion.Gray2Bgr);
-
-                Mat combined = new Mat(new Size(original.Width * 2, original.Height * 2), DepthType.Cv8U, 3);
-                original.CopyTo(new Mat(combined, new Rectangle(0, 0, original.Width, original.Height)));
-                marked.CopyTo(new Mat(combined, new Rectangle(original.Width, 0, marked.Width, marked.Height)));
-                edges3Channel.CopyTo(new Mat(combined, new Rectangle(0, original.Height, edges3Channel.Width, edges3Channel.Height)));
-                empty.CopyTo(new Mat(combined, new Rectangle(original.Width, original.Height, empty.Width, empty.Height)));
-
-                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string combinedImagePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"combined_{timestamp}.png");
-                CvInvoke.Imwrite(combinedImagePath, combined);
-                DisplayIntermediateImage(combined, "Combined Image");
-            }
-            catch (Exception ex)
-            {
-                LogError("Error in SaveFourImages: " + ex.Message);
-            }
-        }
-
-        private static void LogMove(int moveCounter, string action, int x, int y)
-        {
-            try
-            {
-                string logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "moves_log.txt");
-                using (StreamWriter writer = new StreamWriter(logFilePath, true))
-                {
-                    writer.WriteLine($"Move {moveCounter}: {action} at ({x}, {y})");
+                    Mat warpedFrame = PerformPerspectiveTransform(originalFrame, boardCorners);
+                    ImageUtils.DisplayIntermediateImage(warpedFrame, "warped");
+                    DetectStones(warpedFrame, ref detectedStones, ref moveCounter);
                 }
             }
-            catch (Exception ex)
-            {
-                LogError("Error in LogMove: " + ex.Message);
-            }
+
+            ImageUtils.SaveDetectedStones(originalFrame, detectedStones);
+            ImageUtils.SaveFourImages(originalFrame, markedFrame, edges);
         }
 
-        private static void DisplayIntermediateImage(Mat image, string windowName)
+        private static VectorOfPoint FindLargestContour(VectorOfVectorOfPoint contours)
         {
-            try
-            {
-                CvInvoke.Imshow(windowName, image);
-                CvInvoke.WaitKey(1);
-            }
-            catch (Exception ex)
-            {
-                LogError("Error in DisplayIntermediateImage: " + ex.Message);
-            }
-        }
+            double maxArea = 0;
+            VectorOfPoint largestContour = null;
 
-        private static bool IsStoneOnBoard(System.Drawing.Rectangle stone, int width, int height)
-        {
-            return stone.X >= 0 && stone.Y >= 0 &&
-                (stone.X + stone.Width) <= width &&
-                (stone.Y + stone.Height) <= height;
-        }
-
-        public static Mat GetSubMat(Mat original, Rectangle rect)
-        {
-            try
+            for (int i = 0; i < contours.Size; i++)
             {
-                if (rect.X < 0 || rect.Y < 0 || rect.Right > original.Width || rect.Bottom > original.Height)
+                double area = CvInvoke.ContourArea(contours[i]);
+                if (area > maxArea)
                 {
-                    throw new ArgumentOutOfRangeException(nameof(rect), "Rectangle is out of bounds of the original Mat.");
+                    maxArea = area;
+                    largestContour = contours[i];
                 }
+            }
 
-                return new Mat(original, rect);
-            }
-            catch (ArgumentOutOfRangeException ex)
-            {
-                LogError("Error in GetSubMat: " + ex.Message);
-                throw;
-            }
+            return largestContour;
         }
 
-        private static void LogError(string message)
+        private static List<Point> GetBoardCorners(VectorOfPoint contour)
         {
-            string logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "error_log.txt");
-            using (StreamWriter writer = new StreamWriter(logFilePath, true))
+            var approx = new VectorOfPoint();
+            CvInvoke.ApproxPolyDP(contour, approx, CvInvoke.ArcLength(contour, true) * 0.02, true);
+
+            // Filter points to only keep the topmost 4 corners
+            List<Point> points = new List<Point>();
+            for (int i = 0; i < approx.Size; i++)
             {
-                writer.WriteLine($"[{DateTime.Now}] {message}");
+                points.Add(approx[i]);
+            }
+
+            if (points.Count > 4)
+            {
+                points = points.OrderBy(p => p.Y).Take(4).ToList(); // Get topmost 4 points
+            }
+
+            return points;
+        }
+
+        private static Mat PerformPerspectiveTransform(Mat originalFrame, List<Point> boardCorners)
+        {
+            // Order the points (top-left, top-right, bottom-right, bottom-left)
+            Point[] orderedCorners = OrderPoints(boardCorners);
+
+            PointF[] srcPoints = orderedCorners.Select(p => new PointF(p.X, p.Y)).ToArray();
+
+            float width = (float)Math.Max(
+                Distance(orderedCorners[0], orderedCorners[1]),
+                Distance(orderedCorners[2], orderedCorners[3]));
+
+            float height = (float)Math.Max(
+                Distance(orderedCorners[0], orderedCorners[3]),
+                Distance(orderedCorners[1], orderedCorners[2]));
+
+            PointF[] dstPoints = new PointF[]
+            {
+                new PointF(0, 0), // Top-left
+                new PointF(width, 0), // Top-right
+                new PointF(width, height), // Bottom-right
+                new PointF(0, height) // Bottom-left
+            };
+
+            Mat perspectiveMatrix = CvInvoke.GetPerspectiveTransform(srcPoints, dstPoints);
+            Mat warpedFrame = new Mat();
+
+            CvInvoke.WarpPerspective(originalFrame, warpedFrame, perspectiveMatrix, new Size((int)width, (int)height));
+
+            return warpedFrame;
+        }
+
+        private static Point[] OrderPoints(List<Point> points)
+        {
+            // Order the points (top-left, top-right, bottom-right, bottom-left)
+            Point topLeft = points.OrderBy(p => p.Y).Take(2).OrderBy(p => p.X).First();
+            Point topRight = points.OrderBy(p => p.Y).Take(2).OrderByDescending(p => p.X).First();
+            Point bottomLeft = points.OrderByDescending(p => p.Y).Take(2).OrderBy(p => p.X).First();
+            Point bottomRight = points.OrderByDescending(p => p.Y).Take(2).OrderByDescending(p => p.X).First();
+
+            return new Point[] { topLeft, topRight, bottomRight, bottomLeft };
+        }
+
+        private static float Distance(Point pt1, Point pt2)
+        {
+            return (float)Math.Sqrt(Math.Pow(pt2.X - pt1.X, 2) + Math.Pow(pt2.Y - pt1.Y, 2));
+        }
+
+        private static void DetectStones(Mat warpedFrame, ref List<Rectangle> detectedStones, ref int moveCounter)
+        {
+            Mat stoneGray = new Mat();
+            CvInvoke.CvtColor(warpedFrame, stoneGray, ColorConversion.Bgr2Gray);
+            CvInvoke.GaussianBlur(stoneGray, stoneGray, new Size(5, 5), 1);
+            Mat stoneEdges = new Mat();
+            CvInvoke.Canny(stoneGray, stoneEdges, 15, 150);
+            VectorOfVectorOfPoint stoneContours = new VectorOfVectorOfPoint();
+            Mat hierarchy = new Mat();
+            CvInvoke.FindContours(stoneEdges, stoneContours, hierarchy, RetrType.List, ChainApproxMethod.ChainApproxSimple);
+
+            for (int i = 0; i < stoneContours.Size; i++)
+            {
+                double area = CvInvoke.ContourArea(stoneContours[i]);
+                if (area > 100)
+                {
+                    Rectangle stoneRect = CvInvoke.BoundingRectangle(stoneContours[i]);
+                    detectedStones.Add(stoneRect);
+                    moveCounter++;
+                }
             }
         }
     }

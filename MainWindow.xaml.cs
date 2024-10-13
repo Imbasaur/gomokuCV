@@ -103,7 +103,7 @@ namespace GomokuCV
             var rect = GetSelectionRectangle();
             var croppedFrame = new Mat(_originalFrame, rect);
 
-            ImageProcessor.ProcessFrame(croppedFrame, ref _detectedStones, ref _moveCounter, _originalFrame);
+            ImageProcessor.ProcessFrame(croppedFrame, ref _detectedStones, ref _moveCounter);
         }
 
         private void DisplayFrame(Mat frame)
